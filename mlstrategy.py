@@ -4,7 +4,6 @@ Created on Sun Jul 13 13:28:07 2025
 
 @author: Hemal
 """
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -80,23 +79,30 @@ def calculate_trading_metrics(data, predictions, look_ahead=5):
     }
 
 # Function to generate signals and evaluate performance
-def generate_signals(tickers, timeframes, start_date, end_date, look_ahead=5):
+def generate_signals(tickers, timeframes, start_date, end_date, look_ahead=5, retries=3):
     signal_results = []
     metrics_results = []
     
     for ticker in tickers:
         for timeframe in timeframes:
             st.write(f"Processing {ticker} on {timeframe} timeframe...")
-            
-            stock = yf.Ticker(ticker)
-            try:
-                data = stock.history(start=start_date, end=end_date, interval=timeframe)
-                if data.empty:
-                    st.warning(f"No data for {ticker} on {timeframe}")
-                    continue
-            except Exception as e:
-                st.error(f"Error fetching data for {ticker} on {timeframe}: {e}")
-                continue
+            for attempt in range(retries):
+                try:
+                    stock = yf.Ticker(ticker)
+                    data = stock.history(start=start_date, end=end_date, interval=timeframe, threads=False)
+                    if data.empty:
+                        st.warning(f"No data for {ticker} on {timeframe}")
+                        break
+                    break  # Exit retry loop on success
+                except Exception as e:
+                    if attempt < retries - 1:
+                        st.warning(f"Retry {attempt + 1} for {ticker} on {timeframe}: {e}")
+                        continue
+                    else:
+                        st.error(f"Error fetching data for {ticker} on {timeframe}: {e}")
+                        break
+            else:
+                continue  # Skip to next ticker if all retries fail
             
             data['KVO'], data['KVO_Signal'] = klinger_oscillator(data)
             data['BB_Percent'] = bollinger_b_percent(data)
@@ -166,7 +172,7 @@ st.title("Stock Trading Signal Generator")
 
 # User inputs
 st.header("Input Parameters")
-tickers_input = st.text_input("Enter Tickers (comma-separated, e.g., ^NSEI,^NSEBANK)", "^NSEI,^NSEBANK,nifty_fin_service.ns,^BSESN")
+tickers_input = st.text_input("Enter Tickers (comma-separated, e.g., ^NSEI,^NSEBANK)", "^NSEI,^NSEBANK,CNXFINANCE.NS,^BSESN")
 timeframes = st.multiselect("Select Timeframes", ["1d", "1h", "15m"], default=["1d"])
 start_date = st.date_input("Start Date", datetime.now() - timedelta(days=365))
 end_date = st.date_input("End Date", datetime.now())
